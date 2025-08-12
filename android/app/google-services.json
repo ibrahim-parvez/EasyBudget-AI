@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "249735466547",
+    "firebase_url": "https://easybudgetai-c7f44-default-rtdb.firebaseio.com",
+    "project_id": "easybudgetai-c7f44",
+    "storage_bucket": "easybudgetai-c7f44.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:249735466547:android:7cf75aafef0ec5ac1c5d46",
+        "android_client_info": {
+          "package_name": "com.example.easybudgetai"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "249735466547-rjml2vs0r28fjnmeoslnmpjpdre8srrk.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAgt9hflSJZUh__6Mgm0sULLSJAQjIIrNA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "249735466547-rjml2vs0r28fjnmeoslnmpjpdre8srrk.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
