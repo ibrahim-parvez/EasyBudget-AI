@@ -63,7 +63,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
         await _auth.signUpWithEmail(_name.text.trim(), _email.text.trim(), _pass.text.trim());
         // Navigate to onboarding after sign up
         if (!mounted) return;
-        Navigator.of(context).pushReplacementNamed('/onboarding');
+        Navigator.of(context).pushReplacementNamed('/home');
       } else {
         await _auth.signInWithEmail(_email.text.trim(), _pass.text.trim());
         if (!mounted) return;
@@ -78,6 +78,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
   }
 
   Future<void> _googleSignIn() async {
+    if (!mounted) return; // early return if disposed
     setState(() => _loading = true);
     try {
       await _auth.signInWithGoogle();
@@ -87,9 +88,11 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Google sign in failed: $e')));
     } finally {
+      if (!mounted) return;
       setState(() => _loading = false);
     }
   }
+
 
   Future<void> _appleSignIn() async {
     // Implement your Apple sign-in logic here

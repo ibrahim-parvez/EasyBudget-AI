@@ -8,11 +8,7 @@ import '../services/auth_service.dart';
 import 'expenses_page.dart';
 import 'settings_page.dart';
 import 'dart:math';
-// TODO: Import these pages once you create them
-// import 'create_household_page.dart';
-// import 'join_household_page.dart';
-// import 'manage_households_page.dart';
-// import 'manage_people_page.dart';
+import 'manage_households_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -31,11 +27,13 @@ class _HomePageState extends State<HomePage> {
   final _auth = AuthService();
   String? _householdId;
   bool _isLoading = true;
+  List<DocumentSnapshot> _userHouseholds = [];
 
   @override
   void initState() {
     super.initState();
     _loadCurrentHousehold();
+    _loadHouseholds();
   }
 
   Future<void> _loadCurrentHousehold() async {
@@ -63,34 +61,17 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  Future<void> _loadHouseholds() async {
+    final uid = FirebaseAuth.instance.currentUser!.uid;
+    final query = await FirebaseFirestore.instance
+        .collection('households')
+        .where('members', arrayContains: uid)
+        .get();
 
-  void _handleMenuSelect(String value) {
-    switch (value) {
-      case 'manage_households':
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const Placeholder(), // ManageHouseholdsPage()
-          ),
-        );
-        break;
-      case 'manage_people':
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const Placeholder(), // ManagePeoplePage()
-          ),
-        );
-        break;
-      case 'settings':
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const SettingsPage(),
-          ),
-        );
-        break;
-    }
+    if (!mounted) return; 
+    setState(() {
+      _userHouseholds = query.docs;
+    });
   }
 
   @override
@@ -103,209 +84,7 @@ class _HomePageState extends State<HomePage> {
 
     // No household view
     if (_householdId == null) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Home'),
-        ),
-        body: Padding(
-          padding: const EdgeInsets.all(18.0),
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.home_outlined, size: 64),
-                const SizedBox(height: 12),
-                const Text(
-                  'No active household',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'You can join an existing household or create a new one.',
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.group_add_rounded),
-                  label: const Text('Join Household'),
-                  // Join Household Button
-                  onPressed: () {
-                    showDialog(
-                      context: context,
-                      builder: (context) {
-                        String joinId = '';
-                        String pinCode = '';
-
-                        return AlertDialog(
-                          title: const Text('Join Household'),
-                          content: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              TextField(
-                                decoration: const InputDecoration(labelText: 'Join ID'),
-                                onChanged: (value) => joinId = value.trim().toUpperCase(),
-                              ),
-                              TextField(
-                                decoration: const InputDecoration(labelText: 'PIN Code'),
-                                obscureText: true,
-                                onChanged: (value) => pinCode = value.trim(),
-                              ),
-                            ],
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('Cancel'),
-                            ),
-                            ElevatedButton(
-                              onPressed: () async {
-                                if (joinId.isEmpty || pinCode.isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Please enter both Join ID and PIN')),
-                                  );
-                                  return;
-                                }
-
-                                try {
-                                  final query = await FirebaseFirestore.instance
-                                      .collection('households')
-                                      .where('joinId', isEqualTo: joinId)
-                                      .where('pin', isEqualTo: pinCode)
-                                      .limit(1)
-                                      .get();
-
-                                  if (query.docs.isEmpty) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('No household found with that Join ID and PIN')),
-                                    );
-                                  } else {
-                                    final householdId = query.docs.first.id;
-                                    final uid = FirebaseAuth.instance.currentUser!.uid;
-
-                                    // Add user as member if not already
-                                    await FirebaseFirestore.instance.collection('households').doc(householdId).update({
-                                      'members': FieldValue.arrayUnion([uid]),
-                                    });
-
-                                    // Update user's currentHousehold field
-                                    await FirebaseFirestore.instance
-                                        .collection('users')
-                                        .doc(uid)
-                                        .update({'currentHousehold': householdId});
-
-                                    // Update local state immediately to refresh UI
-                                    setState(() {
-                                      _householdId = householdId;
-                                    });
-
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Joined household successfully')),
-                                    );
-
-                                    Navigator.pop(context);
-                                  }
-                                } catch (e) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Error joining household: $e')),
-                                  );
-                                }
-
-                              },
-                              child: const Text('Join'),
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                  },
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.add_home_rounded),
-                  label: const Text('Create Household'),
-                  // Create Household Button
-                  onPressed: () {
-                    showDialog(
-                      context: context,
-                      builder: (context) {
-                        String householdName = '';
-                        String pinCode = '';
-
-                        return AlertDialog(
-                          title: const Text('Create Household'),
-                          content: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              TextField(
-                                decoration: const InputDecoration(labelText: 'Household Name'),
-                                onChanged: (value) => householdName = value.trim(),
-                              ),
-                              TextField(
-                                decoration: const InputDecoration(labelText: 'PIN Code'),
-                                obscureText: true,
-                                onChanged: (value) => pinCode = value.trim(),
-                              ),
-                            ],
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('Cancel'),
-                            ),
-                            ElevatedButton(
-                              onPressed: () async {
-                                if (householdName.isEmpty || pinCode.isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Please enter both Household Name and PIN')),
-                                  );
-                                  return;
-                                }
-
-                                final joinId = generateJoinId();
-
-                                final uid = FirebaseAuth.instance.currentUser!.uid;
-
-                                // Create new household with joinId, pin, members includes creator
-                                final householdRef = await FirebaseFirestore.instance
-                                    .collection('households')
-                                    .add({
-                                  'name': householdName,
-                                  'pin': pinCode,
-                                  'joinId': joinId,
-                                  'createdBy': uid,
-                                  'members': [uid],
-                                  'createdAt': FieldValue.serverTimestamp(),
-                                });
-
-                                // Set as user's current household
-                                await FirebaseFirestore.instance
-                                    .collection('users')
-                                    .doc(uid)
-                                    .update({'currentHousehold': householdRef.id});
-                                
-                                setState(() {
-                                  _householdId = householdRef.id;
-                                });
-
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Household created! Join ID: $joinId')),
-                                );
-
-                                Navigator.pop(context);
-                              },
-                              child: const Text('Create'),
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+      return _noHouseholdView(context);
     }
 
     // Pages for when there is a household
@@ -317,26 +96,42 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Home'),
-        actions: [
-          PopupMenuButton<String>(
-            onSelected: _handleMenuSelect,
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'manage_households',
-                child: Text('Manage Households'),
+        centerTitle: true,
+        title: StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('households')
+              .doc(_householdId)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData || !snapshot.data!.exists) {
+              return const Text('Household');
+            }
+            final data = snapshot.data!.data() as Map<String, dynamic>;
+            final householdName = data['name'] ?? 'Household';
+
+            return GestureDetector(
+              onTap: () => _showHouseholdSelector(context),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    householdName,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                  ),
+                  Icon(
+                    Icons.arrow_drop_down,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white
+                        : Colors.black,
+                  ),
+                ],
               ),
-              const PopupMenuItem(
-                value: 'manage_people',
-                child: Text('Manage People'),
-              ),
-              const PopupMenuItem(
-                value: 'settings',
-                child: Text('Settings'),
-              ),
-            ],
-          ),
-        ],
+            );
+          },
+        ),
       ),
       body: SafeArea(child: pages[idx]),
       bottomNavigationBar: FancyNavBar(
@@ -345,14 +140,142 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
+  /// Household dropdown as a modal bottom sheet
+  void _showHouseholdSelector(BuildContext context) {
+    showModalBottomSheet(
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      context: context,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Switch Household",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Divider(),
+            ..._userHouseholds.map((h) => ListTile(
+                  title: Text(h['name']),
+                  onTap: () async {
+                    final uid = FirebaseAuth.instance.currentUser!.uid;
+                    await FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(uid)
+                        .update({'currentHousehold': h.id});
+                    setState(() => _householdId = h.id);
+                    Navigator.pop(context);
+                  },
+                )),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.settings),
+              title: const Text("Manage Households"),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const ManageHouseholdsPage(),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.add_home),
+              title: const Text("Add Household"),
+              onTap: () {
+                Navigator.pop(context);
+                _showCreateHouseholdDialog(context);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Create Household Dialog
+  void _showCreateHouseholdDialog(BuildContext context) {
+    String householdName = '';
+    String pinCode = '';
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create Household'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              decoration: const InputDecoration(labelText: 'Household Name'),
+              onChanged: (v) => householdName = v.trim(),
+            ),
+            TextField(
+              decoration: const InputDecoration(labelText: 'PIN Code'),
+              obscureText: true,
+              onChanged: (v) => pinCode = v.trim(),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          ElevatedButton(
+            child: const Text("Create"),
+            onPressed: () async {
+              if (householdName.isEmpty || pinCode.isEmpty) return;
+              final joinId = generateJoinId();
+              final uid = FirebaseAuth.instance.currentUser!.uid;
+
+              final householdRef = await FirebaseFirestore.instance
+                  .collection('households')
+                  .add({
+                'name': householdName,
+                'pin': pinCode,
+                'joinId': joinId,
+                'createdBy': uid,
+                'members': [uid],
+                'createdAt': FieldValue.serverTimestamp(),
+              });
+
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(uid)
+                  .update({'currentHousehold': householdRef.id});
+
+              setState(() => _householdId = householdRef.id);
+              Navigator.pop(context);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// No Household screen
+  Widget _noHouseholdView(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Home')),
+      body: const Center(child: Text("No active household")),
+    );
+  }
 }
 
 class _Dashboard extends StatelessWidget {
   final String householdId;
   const _Dashboard({super.key, required this.householdId});
 
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+
     return Padding(
       padding: const EdgeInsets.all(18.0),
       child: ListView(
@@ -361,40 +284,73 @@ class _Dashboard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Good morning,', style: Theme.of(context).textTheme.bodyLarge),
-                const SizedBox(height: 6),
-                StreamBuilder<DocumentSnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('households')
-                      .doc(householdId)
-                      .snapshots(),
+                FutureBuilder<DocumentSnapshot>(
+                  future: FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(currentUserId)
+                      .get(),
                   builder: (context, snapshot) {
                     if (!snapshot.hasData) {
                       return Text('Loading...',
                           style: Theme.of(context).textTheme.titleLarge);
                     }
-                    if (!snapshot.data!.exists) {
-                      return Text('Household deleted',
-                          style: Theme.of(context).textTheme.titleLarge);
-                    }
-                    final householdName =
-                        (snapshot.data!.data() as Map<String, dynamic>)['name']
-                            as String?;
+                    final userData =
+                        snapshot.data!.data() as Map<String, dynamic>?;
+                    final userName = userData?['name'] ?? 'User';
                     return Text(
-                      householdName ?? 'Household',
+                      '${_getGreeting()}, $userName',
                       style: Theme.of(context).textTheme.titleLarge,
                     );
                   },
                 ),
               ]),
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).cardColor,
-                  borderRadius: BorderRadius.circular(12),
+              GestureDetector(
+                onTap: () async {
+                  final householdDoc = await FirebaseFirestore.instance
+                      .collection('households')
+                      .doc(householdId)
+                      .get();
+
+                  final memberIds =
+                      List<String>.from(householdDoc['members'] ?? []);
+                  final memberDocs = await Future.wait(memberIds.map(
+                    (id) => FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(id)
+                        .get(),
+                  ));
+                  final members = memberDocs
+                      .map((doc) => doc.data()?['name'] ?? "Unknown")
+                      .toList();
+
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Household Members'),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: members
+                            .map((m) => ListTile(title: Text(m)))
+                            .toList(),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Close'),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.group_rounded),
                 ),
-                child: const Icon(Icons.group_rounded),
               )
             ],
           ),

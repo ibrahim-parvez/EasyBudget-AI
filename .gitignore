@@ -43,3 +43,30 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Flutter/Dart/Pub
+.dart_tool/
+.packages
+.buildlog/
+.idea/
+.vscode/
+build/
+.pub-cache/
+pubspec.lock
+
+# Firebase configs (don’t push secrets)
+firebase.json
+.firebaserc
+firestore.indexes.json
+firestore.rules
+database.rules.json
+google-services.json
+GoogleService-Info.plist
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Other
+*.keystore
+*.jks
