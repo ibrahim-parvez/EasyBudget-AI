@@ -7,13 +7,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'pages/login_page.dart';
 import 'pages/home_page.dart';
 import 'pages/settings_page.dart';
-import 'theme/app_theme.dart';           // your existing theme file
-import 'theme/theme_provider.dart';     // new: ThemeProvider class
+import 'theme/app_theme.dart';
+import 'theme/theme_provider.dart';
+import 'package:flutter/services.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  
+
   runApp(
     ChangeNotifierProvider(
       create: (_) => ThemeProvider(),
@@ -28,13 +29,34 @@ class EasyBudgetApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'EasyBudget AI',
       theme: AppThemes.light,
       darkTheme: AppThemes.dark,
       themeMode: themeProvider.mode,
+      builder: (context, child) {
+        // Detect actual brightness: either themeMode or system default
+        final platformBrightness = MediaQuery.platformBrightnessOf(context);
+        final isDark = themeProvider.mode == ThemeMode.dark ||
+            (themeProvider.mode == ThemeMode.system &&
+                platformBrightness == Brightness.dark);
+
+        // Set the system UI overlay (status bar icons) dynamically
+        SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark, // Android
+          statusBarBrightness: isDark ? Brightness.dark : Brightness.light,     // iOS
+        ));
+
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: isDark
+              ? SystemUiOverlayStyle.light
+              : SystemUiOverlayStyle.dark,
+          child: child!,
+        );
+      },
       home: const AuthGate(),
       routes: {
         '/login': (context) => const LoginPage(),
@@ -54,7 +76,9 @@ class AuthGate extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
         if (snapshot.hasData) {
           return const HomePage();
