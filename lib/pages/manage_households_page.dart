@@ -310,7 +310,84 @@ class _ManageHouseholdsPageState extends State<ManageHouseholdsPage> {
                                                   )
                                                 : null,
                                           );
-                                        }),const SizedBox(height: 8),
+                                        }),
+                                        const SizedBox(height: 8),
+
+                                        // Household Budget
+                                        Row(
+                                          children: [
+                                            Text(
+                                              "Monthly Budget: ",
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w500,
+                                                color: Colors.grey.shade700,
+                                              ),
+                                            ),
+                                            isOwner
+                                                ? GestureDetector(
+                                                    onTap: () async {
+                                                      final budgetController = TextEditingController(
+                                                          text: (data['budget'] ?? '').toString());
+
+                                                      await showDialog(
+                                                        context: context,
+                                                        builder: (_) => AlertDialog(
+                                                          title: const Text("Edit Household Budget"),
+                                                          content: TextField(
+                                                            controller: budgetController,
+                                                            keyboardType: TextInputType.number,
+                                                            decoration: const InputDecoration(
+                                                              labelText: "Budget",
+                                                            ),
+                                                          ),
+                                                          actions: [
+                                                            TextButton(
+                                                              child: const Text("Cancel"),
+                                                              onPressed: () => Navigator.pop(context),
+                                                            ),
+                                                            ElevatedButton(
+                                                              child: const Text("Save"),
+                                                              onPressed: () async {
+                                                                final newBudget =
+                                                                    double.tryParse(budgetController.text.trim());
+                                                                if (newBudget == null) {
+                                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                                    const SnackBar(
+                                                                        content: Text("Enter a valid number")),
+                                                                  );
+                                                                  return;
+                                                                }
+                                                                await firestore
+                                                                    .collection('households')
+                                                                    .doc(hhId)
+                                                                    .update({'budget': newBudget});
+                                                                Navigator.pop(context);
+                                                                await _loadHouseholdsAndMembers();
+                                                              },
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      );
+                                                    },
+                                                    child: Text(
+                                                      "\$${(data['budget'] ?? 0).toStringAsFixed(2)}",
+                                                      style: const TextStyle(
+                                                          fontWeight: FontWeight.bold,
+                                                          fontSize: 16,
+                                                          color: Colors.blue),
+                                                    ),
+                                                  )
+                                                : Text(
+                                                    "\$${(data['budget'] ?? 0).toStringAsFixed(2)}",
+                                                    style: const TextStyle(
+                                                        fontWeight: FontWeight.bold,
+                                                        fontSize: 16,
+                                                        color: Colors.black),
+                                                  ),
+                                          ],
+                                        ),
+
+                                        const SizedBox(height: 8),
                                         if (isOwner) ...[
                                           const SizedBox(height: 8),
                                           Row(

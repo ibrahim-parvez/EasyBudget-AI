@@ -17,7 +17,6 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   final AuthService _authService = AuthService();
   bool _notificationsEnabled = true;
-  String? _currency;
   String? _userName;
 
   @override
@@ -49,107 +48,112 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final tp = Provider.of<ThemeProvider>(context);
+    final isDark = tp.mode == ThemeMode.dark ||
+        (tp.mode == ThemeMode.system &&
+            Theme.of(context).brightness == Brightness.dark);
+    final cardColor = isDark ? Colors.grey[900] : Colors.white;
 
     return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.all(18.0),
-        child: ListView(
-          children: [
-            // Profile Section
-            RoundedCard(
-              child: ListTile(
-                leading: CircleAvatar(
-                  radius: 28,
-                  backgroundColor: Colors.grey[300],
-                  backgroundImage: null, // TODO: load from user profile photo
-                  child: const Icon(Icons.person, size: 32, color: Colors.white),
-                ),
-                title: Text(_userName ?? "Loading..."),
-                subtitle: const Text("Edit profile & personal details"),
-                trailing: IconButton(
-                  icon: const Icon(Icons.edit),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const EditProfilePage(),
-                      ),
-                    );
-                  },
-                ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          // Profile Section
+          RoundedCard(
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              leading: CircleAvatar(
+                radius: 28,
+                backgroundColor: Colors.blueGrey,
+                child: const Icon(Icons.person, size: 32, color: Colors.white),
               ),
-            ),
-
-            const SizedBox(height: 14),
-
-            // App Settings Section
-            RoundedCard(
-              child: Column(
-                children: [
-                  ListTile(
-                    title: const Text("Appearance"),
-                    subtitle: const Text("Light / Dark mode"),
-                    trailing: Switch(
-                      value: tp.mode == ThemeMode.dark ||
-                            (tp.mode == ThemeMode.system && Theme.of(context).brightness == Brightness.dark),
-                      onChanged: (v) => tp.toggleTheme(),
+              title: Text(_userName ?? "Loading...", style: const TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: const Text("Edit profile & personal details"),
+              trailing: IconButton(
+                icon: const Icon(Icons.edit),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const EditProfilePage(),
                     ),
-                  ),
-                  const Divider(),
-                  ListTile(
-                    title: const Text("Notifications"),
-                    subtitle: const Text("Enable or disable push notifications"),
-                    trailing: Switch(
-                      value: _notificationsEnabled,
-                      onChanged: (v) {
-                        setState(() => _notificationsEnabled = v);
-                      },
-                    ),
-                  ),
-                ],
+                  );
+                },
               ),
             ),
+          ),
 
-            const SizedBox(height: 14),
+          const SizedBox(height: 16),
 
-            // Info Section
-            RoundedCard(
-              child: Column(
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.info_outline_rounded),
-                    title: const Text("About EasyBudget AI"),
-                    subtitle: const Text("Version 0.1"),
+          // App Settings Section
+          RoundedCard(
+            child: Column(
+              children: [
+                ListTile(
+                  title: const Text("Appearance"),
+                  subtitle: const Text("Light / Dark mode"),
+                  trailing: Switch(
+                    value: isDark,
+                    onChanged: (v) => tp.toggleTheme(),
                   ),
-                  ListTile(
-                    leading: const Icon(Icons.help_outline_rounded),
-                    title: const Text("Help & Feedback"),
-                    onTap: () {},
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.article_outlined),
-                    title: const Text("Legal"),
-                    onTap: () {},
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 14),
-
-            // Logout Section
-            RoundedCard(
-              child: ListTile(
-                leading: const Icon(Icons.logout, color: Colors.red),
-                title: const Text(
-                  "Logout",
-                  style: TextStyle(color: Colors.red),
                 ),
-                onTap: _handleLogout,
-              ),
+                const Divider(height: 1),
+                ListTile(
+                  title: const Text("Notifications"),
+                  subtitle: const Text("Enable or disable push notifications"),
+                  trailing: Switch(
+                    value: _notificationsEnabled,
+                    onChanged: (v) {
+                      setState(() => _notificationsEnabled = v);
+                    },
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Info Section
+          RoundedCard(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.info_outline_rounded),
+                  title: const Text("About EasyBudget AI"),
+                  subtitle: const Text("Version 0.1"),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.help_outline_rounded),
+                  title: const Text("Help & Feedback"),
+                  onTap: () {},
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.article_outlined),
+                  title: const Text("Legal"),
+                  onTap: () {},
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Logout Section
+          RoundedCard(
+            child: ListTile(
+              leading: const Icon(Icons.logout, color: Colors.red),
+              title: const Text(
+                "Logout",
+                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+              ),
+              onTap: _handleLogout,
+            ),
+          ),
+
+          const SizedBox(height: 24),
+        ],
       ),
     );
   }

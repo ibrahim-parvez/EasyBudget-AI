@@ -11,6 +11,12 @@ import 'dart:math';
 import 'manage_households_page.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:intl/intl.dart';
+import '../main.dart';
+import '../services/expense_scanner_service.dart';
+import 'subscriptions_page.dart';
+import 'dart:io';
+import '../utils/currency_utils.dart';
+
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -30,6 +36,164 @@ class _HomePageState extends State<HomePage> {
   String? _householdId;
   bool _isLoading = true;
   List<DocumentSnapshot> _userHouseholds = [];
+  bool _isFabExpanded = false;
+
+    final List<String> _categories = [
+    "Groceries",
+    "Utilities",
+    "Transport",
+    "Entertainment",
+    "Dining",
+    "Other"
+  ];
+
+  // Add these controllers for expense input fields
+  final TextEditingController _expenseAmountController = TextEditingController();
+  final TextEditingController _expenseCategoryController = TextEditingController();
+  final TextEditingController _expenseDateController = TextEditingController();
+  final TextEditingController _expenseLocationController = TextEditingController();
+  final TextEditingController _expenseDescriptionController = TextEditingController();
+
+  void _showAddExpenseDialog({
+    String? amount,
+    String? category,
+    String? location,
+    String? description,
+    String? date,
+    String? receiptImagePath,
+    bool isLoading = false,
+  }) {
+    if (amount != null) _expenseAmountController.text = amount;
+    if (category != null) _expenseCategoryController.text = category;
+    if (location != null) _expenseLocationController.text = location;
+    if (description != null) _expenseDescriptionController.text = description;
+    if (date != null) _expenseDateController.text = date;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text("Add Expense"),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (receiptImagePath != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Image.file(
+                        File(receiptImagePath),
+                        height: 120,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  if (isLoading) const CircularProgressIndicator(),
+                  if (!isLoading) ...[
+                    TextField(
+                      controller: _expenseAmountController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: "Amount"),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: _expenseCategoryController.text.isNotEmpty
+                          ? _expenseCategoryController.text
+                          : _categories.first,
+                      items: _categories.map((cat) {
+                        return DropdownMenuItem(
+                          value: cat,
+                          child: Text(cat),
+                        );
+                      }).toList(),
+                      onChanged: (val) =>
+                          _expenseCategoryController.text = val ?? _categories.first,
+                      decoration: const InputDecoration(labelText: "Category"),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _expenseLocationController,
+                      decoration: const InputDecoration(labelText: "Location (optional)"),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _expenseDescriptionController,
+                      decoration: const InputDecoration(labelText: "Description (optional)"),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _expenseDateController,
+                      readOnly: true,
+                      decoration: const InputDecoration(
+                        labelText: "Date",
+                        suffixIcon: Icon(Icons.calendar_today),
+                      ),
+                      onTap: () async {
+                        final pickedDate = await showDatePicker(
+                          context: context,
+                          initialDate: DateTime.now(),
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2100),
+                        );
+                        if (pickedDate != null) {
+                          _expenseDateController.text =
+                              DateFormat('yyyy-MM-dd').format(pickedDate);
+                        }
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Cancel"),
+              ),
+              if (!isLoading)
+                ElevatedButton(
+                  onPressed: () async {
+                    final amountText = _expenseAmountController.text.trim();
+                    final category = _expenseCategoryController.text.trim().isEmpty
+                        ? _categories.first
+                        : _expenseCategoryController.text.trim();
+
+                    if (amountText.isEmpty || double.tryParse(amountText) == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Enter a valid amount")),
+                      );
+                      return;
+                    }
+
+                    final amount = double.parse(amountText);
+
+                    await FirebaseFirestore.instance
+                        .collection('households')
+                        .doc(_householdId)
+                        .collection('expenses')
+                        .add({
+                      'amount': amount,
+                      'category': category,
+                      'location': _expenseLocationController.text.trim(),
+                      'description': _expenseDescriptionController.text.trim(),
+                      'userId': FirebaseAuth.instance.currentUser!.uid,
+                      'timestamp': Timestamp.fromDate(
+                        DateFormat('yyyy-MM-dd').parse(_expenseDateController.text),
+                      ),
+                      if (receiptImagePath != null) 'receiptImage': receiptImagePath,
+                    });
+
+                    Navigator.pop(context);
+                    setState(() => _isFabExpanded = false);
+                  },
+                  child: const Text("Add"),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -64,44 +228,50 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _loadHouseholds() async {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return; // not signed in yet
+    final uid = user.uid;
+
     final query = await FirebaseFirestore.instance
         .collection('households')
         .where('members', arrayContains: uid)
         .get();
 
-    if (!mounted) return; 
+    if (!mounted) return;
     setState(() {
       _userHouseholds = query.docs;
     });
   }
 
-  Stream<DocumentSnapshot> getUserStream() {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-    return FirebaseFirestore.instance.collection('users').doc(uid).snapshots();
+  Stream<DocumentSnapshot>? getUserStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null; // not signed in
+    return FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots();
   }
 
-  Stream<List<DocumentSnapshot>> getUserHouseholdsStream() async* {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-    yield* FirebaseFirestore.instance
+  Stream<List<DocumentSnapshot>>? getUserHouseholdsStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null; // not signed in
+    return FirebaseFirestore.instance
         .collection('households')
-        .where('members', arrayContains: uid)
+        .where('members', arrayContains: user.uid)
         .snapshots()
         .map((snap) => snap.docs);
   }
 
   @override
   Widget build(BuildContext context) {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
-      return const Scaffold(body: Center(child: Text("Not logged in")));
-    }
-
     return StreamBuilder<DocumentSnapshot>(
       stream: getUserStream(),
       builder: (context, userSnapshot) {
+        if (getUserStream() == null) {
+          return const AuthGate();
+        }
+
         if (!userSnapshot.hasData) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
 
         final userData = userSnapshot.data!.data() as Map<String, dynamic>?;
@@ -111,7 +281,9 @@ class _HomePageState extends State<HomePage> {
           stream: getUserHouseholdsStream(),
           builder: (context, householdsSnapshot) {
             if (!householdsSnapshot.hasData) {
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
             }
 
             final userHouseholds = householdsSnapshot.data!;
@@ -121,59 +293,72 @@ class _HomePageState extends State<HomePage> {
               householdExists
                   ? _Dashboard(householdId: currentHouseholdId!)
                   : _noHouseholdContent(context, userHouseholds),
-              // Expenses tab
               householdExists
                   ? ExpensesPage(householdId: currentHouseholdId!)
                   : _noHouseholdContent(context, userHouseholds),
+              Container(), // placeholder for FAB
+              SubscriptionsPage(householdId: currentHouseholdId!),
               const SettingsPage(),
             ];
 
             return Scaffold(
               appBar: AppBar(
                 centerTitle: true,
-                title: idx == 0 || idx == 1
-                    ? (householdExists
-                        ? StreamBuilder<DocumentSnapshot>(
-                            stream: FirebaseFirestore.instance
+                title: idx == 0 || idx == 1 || idx == 3
+                    ? StreamBuilder<DocumentSnapshot>(
+                        stream: householdExists
+                            ? FirebaseFirestore.instance
                                 .collection('households')
                                 .doc(currentHouseholdId)
-                                .snapshots(),
-                            builder: (context, snapshot) {
-                              if (!snapshot.hasData || !snapshot.data!.exists) {
-                                return const Text('Household');
-                              }
-                              final data = snapshot.data!.data() as Map<String, dynamic>;
-                              final householdName = data['name'] ?? 'Household';
-                              return GestureDetector(
-                                onTap: () => _showHouseholdSelector(context),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      householdName,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 18,
-                                      ),
-                                    ),
-                                    Icon(
-                                      Icons.arrow_drop_down,
-                                      color: Theme.of(context).brightness == Brightness.dark
-                                          ? Colors.white
-                                          : Colors.black,
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          )
-                        : const Text("Home"))
+                                .snapshots()
+                            : null,
+                        builder: (context, snapshot) {
+                          if (!householdExists) return const Text("Home", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18));
+                          if (!snapshot.hasData || !snapshot.data!.exists) {
+                            return const Text('Household', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18));
+                          }
+                          final data = snapshot.data!.data() as Map<String, dynamic>;
+                          final householdName = data['name'] ?? 'Household';
+                          return GestureDetector(
+                            onTap: () => _showHouseholdSelector(context),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(householdName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                                Icon(Icons.arrow_drop_down, color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black),
+                              ],
+                            ),
+                          );
+                        },
+                      )
                     : const Text("Settings"),
+                leading: Padding(
+                  padding: const EdgeInsets.only(left: 12.0),
+                  child: Image.asset(
+                    Theme.of(context).brightness == Brightness.dark
+                        ? 'assets/images/logo_no_background_dark.png'
+                        : 'assets/images/logo_no_background_light.png',
+                    height: 70,
+                    width: 70,
+                  ),
+                ),
               ),
               body: SafeArea(child: pages[idx]),
               bottomNavigationBar: FancyNavBar(
                 currentIndex: idx,
                 onTap: (i) => setState(() => idx = i),
+                onScanExpense: () async {
+                  final result = await ExpenseScannerService.instance.scanExpense(context);
+                  if (result != null) {
+                    _expenseAmountController.text = result['amount']?.toString() ?? '';
+                    _expenseCategoryController.text = result['category'] ?? '';
+                    _expenseDateController.text = result['date'] ?? DateTime.now().toIso8601String().split('T').first;
+                    _expenseLocationController.text = result['location'] ?? '';
+                    _expenseDescriptionController.text = result['description'] ?? '';
+                  }
+                  _showAddExpenseDialog();
+                },
+                onManualExpense: () => _showAddExpenseDialog(),
               ),
             );
           },
@@ -181,6 +366,7 @@ class _HomePageState extends State<HomePage> {
       },
     );
   }
+
 
   /// Widget to show create/join buttons when no household
   Widget _noHouseholdContent(BuildContext context, List<DocumentSnapshot> userHouseholds) {
@@ -585,6 +771,8 @@ class _DashboardState extends State<_Dashboard> {
 
   double _budget = 0.0;
 
+  static const Color primaryBlue = Color(0xFF1565C0);
+
   String _timeline = 'Month'; // default
   final List<String> _timelineOptions = ['Day', 'Week', 'Month', '3 Months', '6 Months', 'Year', 'All Time'];
 
@@ -599,10 +787,25 @@ class _DashboardState extends State<_Dashboard> {
 
   String _currentMonthYear = DateFormat('MMMM yyyy').format(DateTime.now());
 
+  final TextEditingController _expenseDateController =
+    TextEditingController(text: DateFormat('yyyy-MM-dd').format(DateTime.now()));
+
+  // Currency state
+  String _currencyCode = 'USD';
+  String _currencySymbol = '\$';
+
   @override
   void initState() {
     super.initState();
     _fetchHouseholdData();
+  }
+
+  @override
+  void didUpdateWidget(covariant _Dashboard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.householdId != widget.householdId) {
+      _fetchHouseholdData();
+    }
   }
 
   DateTime _getStartDate() {
@@ -658,25 +861,35 @@ class _DashboardState extends State<_Dashboard> {
     return spendingMap;
   }
 
-
   Future<void> _fetchHouseholdData() async {
     final householdDoc = await FirebaseFirestore.instance
         .collection('households')
         .doc(widget.householdId)
         .get();
 
+    if (!mounted) return;
+
     if (householdDoc.exists) {
+      final data = householdDoc.data() ?? {};
+      final code = (data['currency'] ?? 'USD').toString();
+
+      final symbol = CurrencyUtils.symbol(code);
+
       setState(() {
-        _budget = (householdDoc.data()?['budget'] ?? 0).toDouble();
+        _budget = (data['budget'] ?? 0).toDouble();
+        _currencyCode = code;
+        _currencySymbol = symbol;
       });
     }
   }
+
   @override
   void dispose() {
     _expenseAmountController.dispose();
     _expenseCategoryController.dispose();
     _expenseLocationController.dispose();
     _expenseDescriptionController.dispose();
+    _expenseDateController.dispose();
     super.dispose();
   }
 
@@ -699,89 +912,143 @@ class _DashboardState extends State<_Dashboard> {
     setState(() => _currentMonthYear = DateFormat('MMMM yyyy').format(next));
   }
 
-  void _showAddExpenseDialog() {
-    _expenseAmountController.clear();
-    _expenseCategoryController.clear();
-    _expenseLocationController.clear();
-    _expenseDescriptionController.clear();
+  void _showAddExpenseDialog({
+    String? amount,
+    String? category,
+    String? location,
+    String? description,
+    String? date,
+    String? receiptImagePath,
+    bool isLoading = false,
+  }) {
+    if (amount != null) _expenseAmountController.text = amount;
+    if (category != null) _expenseCategoryController.text = category;
+    if (location != null) _expenseLocationController.text = location;
+    if (description != null) _expenseDescriptionController.text = description;
+    if (date != null) _expenseDateController.text = date;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Add Expense"),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _expenseAmountController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: "Amount"),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text("Add Expense"),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (receiptImagePath != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Image.file(
+                        File(receiptImagePath),
+                        height: 120,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  if (isLoading) const CircularProgressIndicator(),
+                  if (!isLoading) ...[
+                    TextField(
+                      controller: _expenseAmountController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(labelText: "Amount ($_currencySymbol)"),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: _expenseCategoryController.text.isNotEmpty
+                          ? _expenseCategoryController.text
+                          : _categories.first,
+                      items: _categories.map((cat) {
+                        return DropdownMenuItem(
+                          value: cat,
+                          child: Text(cat),
+                        );
+                      }).toList(),
+                      onChanged: (val) =>
+                          _expenseCategoryController.text = val ?? _categories.first,
+                      decoration: const InputDecoration(labelText: "Category"),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _expenseLocationController,
+                      decoration: const InputDecoration(labelText: "Location (optional)"),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _expenseDescriptionController,
+                      decoration: const InputDecoration(labelText: "Description (optional)"),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _expenseDateController,
+                      readOnly: true,
+                      decoration: const InputDecoration(
+                        labelText: "Date",
+                        suffixIcon: Icon(Icons.calendar_today),
+                      ),
+                      onTap: () async {
+                        final pickedDate = await showDatePicker(
+                          context: context,
+                          initialDate: DateTime.now(),
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2100),
+                        );
+                        if (pickedDate != null) {
+                          _expenseDateController.text =
+                              DateFormat('yyyy-MM-dd').format(pickedDate);
+                        }
+                      },
+                    ),
+                  ],
+                ],
               ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: _categories.first,
-                items: _categories.map((cat) {
-                  return DropdownMenuItem(
-                    value: cat,
-                    child: Text(cat),
-                  );
-                }).toList(),
-                onChanged: (val) => _expenseCategoryController.text = val ?? _categories.first,
-                decoration: const InputDecoration(labelText: "Category"),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Cancel"),
               ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _expenseLocationController,
-                decoration: const InputDecoration(labelText: "Location (optional)"),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _expenseDescriptionController,
-                decoration: const InputDecoration(labelText: "Description (optional)"),
-              ),
+              if (!isLoading)
+                ElevatedButton(
+                  onPressed: () async {
+                    final amountText = _expenseAmountController.text.trim();
+                    final category = _expenseCategoryController.text.trim().isEmpty
+                        ? _categories.first
+                        : _expenseCategoryController.text.trim();
+
+                    if (amountText.isEmpty || double.tryParse(amountText) == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Enter a valid amount")),
+                      );
+                      return;
+                    }
+
+                    final amount = double.parse(amountText);
+
+                    await FirebaseFirestore.instance
+                        .collection('households')
+                        .doc(widget.householdId)
+                        .collection('expenses')
+                        .add({
+                      'amount': amount,
+                      'category': category,
+                      'location': _expenseLocationController.text.trim(),
+                      'description': _expenseDescriptionController.text.trim(),
+                      'userId': FirebaseAuth.instance.currentUser!.uid,
+                      'timestamp': Timestamp.fromDate(
+                        DateFormat('yyyy-MM-dd').parse(_expenseDateController.text),
+                      ),
+                      if (receiptImagePath != null) 'receiptImage': receiptImagePath,
+                    });
+
+                    Navigator.pop(context);
+                    setState(() => _isFabExpanded = false);
+                  },
+                  child: const Text("Add"),
+                ),
             ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final amountText = _expenseAmountController.text.trim();
-              final category = _expenseCategoryController.text.trim().isEmpty
-                  ? _categories.first
-                  : _expenseCategoryController.text.trim();
-
-              if (amountText.isEmpty || double.tryParse(amountText) == null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Enter a valid amount")));
-                return;
-              }
-
-              final amount = double.parse(amountText);
-
-              await FirebaseFirestore.instance
-                  .collection('households')
-                  .doc(widget.householdId)
-                  .collection('expenses')
-                  .add({
-                'amount': amount,
-                'category': category,
-                'location': _expenseLocationController.text.trim(),
-                'description': _expenseDescriptionController.text.trim(),
-                'userId': FirebaseAuth.instance.currentUser!.uid,
-                'timestamp': FieldValue.serverTimestamp(),
-              });
-
-              Navigator.pop(context);
-              setState(() => _isFabExpanded = false);
-            },
-            child: const Text("Add"),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -802,6 +1069,57 @@ class _DashboardState extends State<_Dashboard> {
       default:
         return Icons.category_rounded;
     }
+  }
+
+  Widget _buildCategoryBar(BuildContext context, String title, double value, double total) {
+    final percent = total > 0 ? (value / total) : 0.0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: Text(title, style: const TextStyle(fontSize: 14)),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 5,
+            child: Stack(
+              children: [
+                Container(
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+                FractionallySizedBox(
+                  widthFactor: percent.clamp(0.0, 1.0),
+                  child: Container(
+                    height: 12,
+                    decoration: BoxDecoration(
+                      gradient: AppThemes.primaryGradient(
+                        dark: Theme.of(context).brightness == Brightness.dark,
+                      ),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 90,
+            child: Text(
+              '$_currencySymbol${value.toStringAsFixed(2)}',
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -873,7 +1191,9 @@ class _DashboardState extends State<_Dashboard> {
                           final userName = userData?['name'] ?? 'User';
                           return Text(
                             '${_getGreeting()}, $userName',
-                            style: Theme.of(context).textTheme.titleLarge,
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.normal, // remove bold
+                                ),
                           );
                         },
                       ),
@@ -954,23 +1274,31 @@ class _DashboardState extends State<_Dashboard> {
                             final cat = entry.key;
                             final spent = entry.value;
                             final percent = _budget > 0 ? (spent / _budget) : 0.0;
+
                             return Expanded(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  Text('\$${spent.toStringAsFixed(0)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 4),
-                                  Container(
-                                    height: percent * 120, // scale max height
-                                    decoration: BoxDecoration(
-                                      gradient: AppThemes.primaryGradient(
-                                          dark: Theme.of(context).brightness == Brightness.dark),
-                                      borderRadius: BorderRadius.circular(8),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 4.0), // <-- spacing between bars
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      '$_currencySymbol${spent.toStringAsFixed(0)}',
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                                     ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(cat, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
-                                ],
+                                    const SizedBox(height: 4),
+                                    Container(
+                                      height: percent * 120,
+                                      decoration: BoxDecoration(
+                                        gradient: AppThemes.primaryGradient(
+                                          dark: Theme.of(context).brightness == Brightness.dark
+                                        ),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(cat, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
+                                  ],
+                                ),
                               ),
                             );
                           }).toList(),
@@ -980,7 +1308,7 @@ class _DashboardState extends State<_Dashboard> {
 
                       // Spent / Budget display
                       Text(
-                        'Spent: \$${totalSpent.toStringAsFixed(2)} / \$${_budget.toStringAsFixed(2)}',
+                        'Spent: $_currencySymbol${totalSpent.toStringAsFixed(2)} / $_currencySymbol${_budget.toStringAsFixed(2)}',
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 4),
@@ -1004,13 +1332,45 @@ class _DashboardState extends State<_Dashboard> {
                       const Text('Recent Activity', style: TextStyle(fontWeight: FontWeight.bold)),
                       const SizedBox(height: 8),
                       ...expenses.take(5).map((e) {
-                        return ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: CircleAvatar(child: Icon(_iconForCategory(e['category']))),
-                          title: Text(e['category']),
-                          subtitle: Text(DateFormat('MMM d').format(e['timestamp'])),
-                          trailing: Text('- \$${e['amount'].toStringAsFixed(2)}'),
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12), // spacing between cards
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 20,
+                                backgroundColor: primaryBlue.withOpacity(0.2),
+                                child: Icon(
+                                  _iconForCategory(e['category']),
+                                  color: primaryBlue,
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      e['category'],
+                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                                    ),
+                                    Text(
+                                      DateFormat('MMM d').format(e['timestamp']),
+                                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                '- $_currencySymbol${e['amount'].toStringAsFixed(2)}',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: primaryBlue,
+                                ),
+                              ),
+                            ],
+                          ),
                         );
                       }).toList(),
                       const SizedBox(height: 12),
@@ -1024,7 +1384,6 @@ class _DashboardState extends State<_Dashboard> {
                     ],
                   ),
                 ),
-
 
                 const SizedBox(height: 14,),
 
@@ -1064,7 +1423,7 @@ class _DashboardState extends State<_Dashboard> {
                               contentPadding: EdgeInsets.zero,
                               leading: const CircleAvatar(child: Icon(Icons.person_rounded)),
                               title: Text(e.key),
-                              trailing: Text('\$${e.value.toStringAsFixed(2)}'),
+                              trailing: Text('$_currencySymbol${e.value.toStringAsFixed(2)}'),
                             )).toList(),
                           );
                         },
@@ -1072,49 +1431,24 @@ class _DashboardState extends State<_Dashboard> {
                     ],
                   ),
                 ),
+                const SizedBox(height: 50),
+                // Optional label for branding
+                Center(
+                  child: Text(
+                    "EasyBudget AI",
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
               ],
             );
           },
         ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: Stack(
-        children: [
-          Positioned(
-            bottom: 16,
-            right: 16,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (_isFabExpanded) ...[
-                  FloatingActionButton.extended(
-                    heroTag: "scanReceipt",
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("Scan receipt coming soon!")));
-                    },
-                    label: const Text("Scan Receipt"),
-                    icon: const Icon(Icons.camera_alt_rounded),
-                  ),
-                  const SizedBox(height: 12),
-                  FloatingActionButton.extended(
-                    heroTag: "enterManual",
-                    onPressed: _showAddExpenseDialog,
-                    label: const Text("Enter Manually"),
-                    icon: const Icon(Icons.edit_rounded),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                FloatingActionButton(
-                  heroTag: "mainFab",
-                  onPressed: () => setState(() => _isFabExpanded = !_isFabExpanded),
-                  child: Icon(_isFabExpanded ? Icons.close_rounded : Icons.add),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
+

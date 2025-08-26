@@ -13,7 +13,11 @@ class RoundedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cardColor = Theme.of(context).cardColor;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Use bluish dark gray for dark mode
+    final cardColor = isDark ? const Color(0xFF1A1F2B) : Theme.of(context).cardColor;
+
     return Container(
       decoration: BoxDecoration(
         color: cardColor,

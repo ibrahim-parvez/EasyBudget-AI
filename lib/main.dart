@@ -1,4 +1,5 @@
 // lib/main.dart
+import 'package:EasyBudgetAI/pages/splash_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
@@ -10,14 +11,36 @@ import 'pages/settings_page.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+/// NEW: HouseholdProvider for global currentHouseholdId
+class HouseholdProvider extends ChangeNotifier {
+  String? _currentHouseholdId;
+
+  String? get currentHouseholdId => _currentHouseholdId;
+
+  void setHousehold(String? id) {
+    _currentHouseholdId = id;
+    notifyListeners();
+  }
+
+  void clearHousehold() {
+    _currentHouseholdId = null;
+    notifyListeners();
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => ThemeProvider(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => HouseholdProvider()), // NEW
+      ],
       child: const EasyBudgetApp(),
     ),
   );
@@ -57,7 +80,7 @@ class EasyBudgetApp extends StatelessWidget {
           child: child!,
         );
       },
-      home: const AuthGate(),
+      home: const SplashScreen(),
       routes: {
         '/login': (context) => const LoginPage(),
         '/home': (context) => const HomePage(),
@@ -67,6 +90,7 @@ class EasyBudgetApp extends StatelessWidget {
   }
 }
 
+/// AuthGate remains unchanged
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
@@ -80,11 +104,14 @@ class AuthGate extends StatelessWidget {
             body: Center(child: CircularProgressIndicator()),
           );
         }
+
+        // If user is logged in → go HomePage
         if (snapshot.hasData) {
           return const HomePage();
-        } else {
-          return const LoginPage();
         }
+
+        // If user canceled Google login or is signed out → go LoginPage
+        return const LoginPage();
       },
     );
   }
