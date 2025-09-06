@@ -92,7 +92,7 @@ class _HomePageState extends State<HomePage> {
                   if (!isLoading) ...[
                     TextField(
                       controller: _expenseAmountController,
-                      keyboardType: TextInputType.number,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       decoration: const InputDecoration(labelText: "Amount"),
                     ),
                     const SizedBox(height: 8),
@@ -243,10 +243,13 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  Stream<DocumentSnapshot>? getUserStream() {
+  Stream<DocumentSnapshot> getUserStream() {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return null; // not signed in
-    return FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots();
+    if (user == null) return const Stream.empty();
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .snapshots();
   }
 
   Stream<List<DocumentSnapshot>>? getUserHouseholdsStream() {
@@ -275,7 +278,7 @@ class _HomePageState extends State<HomePage> {
         }
 
         final userData = userSnapshot.data!.data() as Map<String, dynamic>?;
-        final currentHouseholdId = userData?['currentHousehold'] as String?;
+      final currentHouseholdId = userData?['currentHousehold'] as String?;
 
         return StreamBuilder<List<DocumentSnapshot>>(
           stream: getUserHouseholdsStream(),
@@ -287,17 +290,20 @@ class _HomePageState extends State<HomePage> {
             }
 
             final userHouseholds = householdsSnapshot.data!;
-            final householdExists = userHouseholds.any((h) => h.id == currentHouseholdId);
+            final householdExists = currentHouseholdId != null &&
+                        userHouseholds.any((h) => h.id == currentHouseholdId);
 
             final pages = [
-              householdExists
-                  ? _Dashboard(householdId: currentHouseholdId!)
+              householdExists && currentHouseholdId != null
+                  ? _Dashboard(householdId: currentHouseholdId)
                   : _noHouseholdContent(context, userHouseholds),
-              householdExists
-                  ? ExpensesPage(householdId: currentHouseholdId!)
+              householdExists && currentHouseholdId != null
+                  ? ExpensesPage(householdId: currentHouseholdId)
                   : _noHouseholdContent(context, userHouseholds),
               Container(), // placeholder for FAB
-              SubscriptionsPage(householdId: currentHouseholdId!),
+              (householdExists && currentHouseholdId != null)
+                  ? SubscriptionsPage(householdId: currentHouseholdId)
+                  : _noHouseholdContent(context, userHouseholds),
               const SettingsPage(),
             ];
 
@@ -348,17 +354,48 @@ class _HomePageState extends State<HomePage> {
                 currentIndex: idx,
                 onTap: (i) => setState(() => idx = i),
                 onScanExpense: () async {
-                  final result = await ExpenseScannerService.instance.scanExpense(context);
-                  if (result != null) {
-                    _expenseAmountController.text = result['amount']?.toString() ?? '';
-                    _expenseCategoryController.text = result['category'] ?? '';
-                    _expenseDateController.text = result['date'] ?? DateTime.now().toIso8601String().split('T').first;
-                    _expenseLocationController.text = result['location'] ?? '';
-                    _expenseDescriptionController.text = result['description'] ?? '';
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false, // Prevent closing while loading
+                    builder: (_) => const Center(
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+
+                  try {
+                    final result = await ExpenseScannerService.instance.scanExpense(context);
+
+                    Navigator.pop(context); // Remove loading indicator
+
+                    if (result != null) {
+                      _expenseAmountController.text = result['amount']?.toString() ?? '';
+                      _expenseCategoryController.text = result['category'] ?? '';
+                      _expenseDateController.text =
+                          result['date'] ?? DateTime.now().toIso8601String().split('T').first;
+                      _expenseLocationController.text = result['location'] ?? '';
+                      _expenseDescriptionController.text = result['description'] ?? '';
+                    }
+
+                    _showAddExpenseDialog();
+                  } catch (e) {
+                    Navigator.pop(context); // Remove loading indicator in case of error
+                    debugPrint("❌ Error scanning expense: $e");
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Failed to process receipt")),
+                    );
                   }
+                },
+                onManualExpense: () {
+                  // Clear all fields
+                  _expenseAmountController.clear();
+                  _expenseCategoryController.clear();
+                  _expenseDateController.clear();
+                  _expenseLocationController.clear();
+                  _expenseDescriptionController.clear();
+
+                  // Show the add expense dialog
                   _showAddExpenseDialog();
                 },
-                onManualExpense: () => _showAddExpenseDialog(),
               ),
             );
           },
@@ -377,12 +414,12 @@ class _HomePageState extends State<HomePage> {
           const Text("You are not in any household"),
           const SizedBox(height: 16),
           ElevatedButton(
-            onPressed: () => _showCreateHouseholdDialog(context),
+            onPressed: () => _showCreateHouseholdDialog(),
             child: const Text("Create Household"),
           ),
           const SizedBox(height: 8),
           ElevatedButton(
-            onPressed: () => _showJoinHouseholdDialog(context),
+            onPressed: () => _showJoinHouseholdDialog(),
             child: const Text("Join Household"),
           ),
         ],
@@ -390,10 +427,12 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-
   /// Household dropdown as a modal bottom sheet
   void _showHouseholdSelector(BuildContext context) {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return; // not signed in yet
+    final uid = user.uid;
+
 
     showModalBottomSheet(
       shape: const RoundedRectangleBorder(
@@ -453,10 +492,44 @@ class _HomePageState extends State<HomePage> {
                   ),
                   ListTile(
                     leading: const Icon(Icons.add_home),
-                    title: const Text("Add Household"),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showCreateHouseholdDialog(context);
+                    title: const Text("Join / Create Household"),
+                    onTap: () async {
+                      final parentContext = context; // save a valid context
+                      Navigator.pop(parentContext); // close the drawer/menu first
+
+                      // Small delay to ensure drawer is fully closed
+                      await Future.delayed(const Duration(milliseconds: 100));
+
+                      // Use the global navigatorKey to safely show dialogs
+                      final choice = await showDialog<String>(
+                        context: navigatorKey.currentContext!, // always valid
+                        barrierDismissible: false, // force user to pick an option
+                        builder: (dialogContext) => AlertDialog(
+                          title: const Text("Join or Create Household"),
+                          content: const Text(
+                            "Do you want to join an existing household or create a new one?"
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(dialogContext).pop('join'),
+                              child: const Text("Join"),
+                            ),
+                            ElevatedButton(
+                              onPressed: () => Navigator.of(dialogContext).pop('create'),
+                              child: const Text("Create"),
+                            ),
+                          ],
+                        ),
+                      );
+
+                      if (choice == null) return; // user dismissed somehow
+
+                      // Now safely open the corresponding dialog
+                      if (choice == 'join') {
+                        _showJoinHouseholdDialog();
+                      } else if (choice == 'create') {
+                        _showCreateHouseholdDialog();
+                      }
                     },
                   ),
                 ],
@@ -470,125 +543,158 @@ class _HomePageState extends State<HomePage> {
 
 
   /// Dialog to create a household
-  void _showCreateHouseholdDialog(BuildContext context) {
+  void _showCreateHouseholdDialog() {
     final nameController = TextEditingController();
     final budgetController = TextEditingController();
     final pinController = TextEditingController();
 
+    // Use navigatorKey.currentContext! for a guaranteed valid Navigator context
+    final context = navigatorKey.currentContext!;
+    
     // Auto-detect currency
     final locale = Localizations.localeOf(context);
     String selectedCurrency = _currencyFromCountry(locale.countryCode);
 
     showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Create Household"),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: "Household Name"),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: selectedCurrency,
-                isDense: true,
-                decoration: const InputDecoration(
-                  labelText: "Currency",
-                  contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                ),
-                items: _currencyList.map((currency) {
-                  return DropdownMenuItem<String>(
-                    value: currency['code'],
-                    child: Row(
-                      children: [
-                        CountryFlag.fromCountryCode(
-                          currency.containsKey('countryCode')
-                              ? currency['countryCode']!
-                              : currency['code']!,
-                          height: 18,
-                          width: 24,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          "${currency['code']} - ${currency['name']}",
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                      ],
+      context: context, // always valid
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        bool isLoading = false;
+
+        return StatefulBuilder(
+          builder: (dialogContext, setState) => AlertDialog(
+            title: const Text("Create Household"),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isLoading)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: CircularProgressIndicator(),
+                    )
+                  else ...[
+                    TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(labelText: "Household Name"),
                     ),
-                  );
-                }).toList(),
-                onChanged: (value) {
-                  setState(() => selectedCurrency = value ?? selectedCurrency);
-                },
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: selectedCurrency,
+                      isDense: true,
+                      decoration: const InputDecoration(
+                        labelText: "Currency",
+                        contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                      ),
+                      items: _currencyList.map((currency) {
+                        return DropdownMenuItem<String>(
+                          value: currency['code'],
+                          child: Row(
+                            children: [
+                              CountryFlag.fromCountryCode(
+                                currency.containsKey('countryCode')
+                                    ? currency['countryCode']!
+                                    : currency['code']!,
+                                height: 18,
+                                width: 24,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                "${currency['code']} - ${currency['name']}",
+                                style: const TextStyle(fontSize: 14),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() => selectedCurrency = value ?? selectedCurrency);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: budgetController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: "Monthly Budget (optional)"),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: pinController,
+                      decoration: const InputDecoration(labelText: "PIN"),
+                      obscureText: true,
+                    ),
+                  ],
+                ],
               ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: budgetController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: "Monthly Budget (optional)",
+            ),
+            actions: [
+              if (!isLoading)
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text("Cancel"),
                 ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: pinController,
-                decoration: const InputDecoration(labelText: "PIN"),
-                obscureText: true,
-              ),
+              if (!isLoading)
+                ElevatedButton(
+                  onPressed: () async {
+                    final name = nameController.text.trim();
+                    final pin = pinController.text.trim();
+                    final budget = budgetController.text.trim();
+
+                    if (name.isEmpty || pin.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Please enter both name and PIN")),
+                      );
+                      return;
+                    }
+
+                    setState(() => isLoading = true);
+
+                    try {
+                      final user = FirebaseAuth.instance.currentUser;
+                      if (user == null) return;
+                      final uid = user.uid;
+
+                      final joinId = generateJoinId();
+                      final docRef = FirebaseFirestore.instance.collection('households').doc();
+
+                      await docRef.set({
+                        'id': docRef.id,
+                        'name': name,
+                        'currency': selectedCurrency,
+                        'budget': budget.isNotEmpty ? double.parse(budget) : null,
+                        'pin': pin,
+                        'joinId': joinId,
+                        'createdBy': uid,
+                        'members': [uid],
+                        'createdAt': FieldValue.serverTimestamp(),
+                      });
+
+                      await FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(uid)
+                          .update({'currentHousehold': docRef.id});
+
+                      if (!mounted) return;
+                      setState(() => _householdId = docRef.id);
+
+                      Navigator.of(dialogContext).pop(); // close dialog
+                    } catch (e) {
+                      setState(() => isLoading = false);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text("Error: $e")),
+                      );
+                    }
+                  },
+                  child: const Text("Create"),
+                ),
             ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final name = nameController.text.trim();
-              final pin = pinController.text.trim();
-              final budget = budgetController.text.trim();
-
-              if (name.isEmpty || pin.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Please enter both name and PIN")),
-                );
-                return;
-              }
-
-              final uid = FirebaseAuth.instance.currentUser!.uid;
-              final joinId = generateJoinId(); // helper function above
-              final docRef = FirebaseFirestore.instance.collection('households').doc();
-
-              await docRef.set({
-                'id': docRef.id,
-                'name': name,
-                'currency': selectedCurrency,
-                'budget': budget.isNotEmpty ? double.parse(budget) : null,
-                'pin': pin,
-                'joinId': joinId,
-                'createdBy': uid,
-                'members': [uid],
-                'createdAt': FieldValue.serverTimestamp(),
-              });
-
-              await FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(uid)
-                  .update({'currentHousehold': docRef.id});
-
-              setState(() => _householdId = docRef.id);
-              Navigator.pop(context);
-            },
-            child: const Text("Create"),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
+
+
 
   /// Helper to map country code -> currency code
   String _currencyFromCountry(String? countryCode) {
@@ -642,92 +748,118 @@ class _HomePageState extends State<HomePage> {
     {"code": "AED", "name": "UAE Dirham", "countryCode": "AE"},
   ];
 
-  void _showJoinHouseholdDialog(BuildContext context) {
+  void _showJoinHouseholdDialog() {
     final joinIdController = TextEditingController();
     final pinController = TextEditingController();
 
+    // Stable context for SnackBars
+    final scaffoldContext = ScaffoldMessenger.of(navigatorKey.currentContext!).context;
+
     showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Join Household"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: joinIdController,
-              decoration: const InputDecoration(labelText: "Join ID"),
+      context: navigatorKey.currentContext!, // always valid
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        bool isLoading = false;
+
+        return StatefulBuilder(
+          builder: (dialogContext, setState) => AlertDialog(
+            title: const Text("Join Household"),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isLoading)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: CircularProgressIndicator(),
+                  )
+                else ...[
+                  TextField(
+                    controller: joinIdController,
+                    decoration: const InputDecoration(labelText: "Join ID"),
+                  ),
+                  TextField(
+                    controller: pinController,
+                    decoration: const InputDecoration(labelText: "PIN"),
+                    obscureText: true,
+                  ),
+                ],
+              ],
             ),
-            TextField(
-              controller: pinController,
-              decoration: const InputDecoration(labelText: "PIN"),
-              obscureText: true,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
+            actions: [
+              if (!isLoading)
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text("Cancel"),
+                ),
+              if (!isLoading)
+                ElevatedButton(
+                  onPressed: () async {
+                    final joinId = joinIdController.text.trim();
+                    final pin = pinController.text.trim();
+
+                    if (joinId.isEmpty || pin.isEmpty) {
+                      ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+                        const SnackBar(content: Text("Please enter both Join ID and PIN")),
+                      );
+                      return;
+                    }
+
+                    setState(() => isLoading = true);
+
+                    try {
+                      final query = await FirebaseFirestore.instance
+                          .collection('households')
+                          .where('joinId', isEqualTo: joinId)
+                          .limit(1)
+                          .get();
+
+                      if (query.docs.isEmpty) {
+                        if (mounted) setState(() => isLoading = false);
+                        ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+                          const SnackBar(content: Text("No household found")),
+                        );
+                        return;
+                      }
+
+                      final doc = query.docs.first;
+                      final data = doc.data();
+
+                      if (data['pin'] != pin) {
+                        if (mounted) setState(() => isLoading = false);
+                        ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+                          const SnackBar(content: Text("Incorrect PIN")),
+                        );
+                        return;
+                      }
+
+                      final user = FirebaseAuth.instance.currentUser;
+                      if (user == null) return;
+                      final uid = user.uid;
+
+                      await doc.reference.update({
+                        'members': FieldValue.arrayUnion([uid])
+                      });
+
+                      await FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(uid)
+                          .update({'currentHousehold': doc.id});
+
+                      if (!mounted) return;
+                      Navigator.of(dialogContext).pop(); // safely close dialog
+                    } catch (e) {
+                      if (mounted) setState(() => isLoading = false);
+                      ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+                        SnackBar(content: Text("Error: $e")),
+                      );
+                    }
+                  },
+                  child: const Text("Join"),
+                ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () async {
-              final joinId = joinIdController.text.trim();
-              final pin = pinController.text.trim();
-
-              if (joinId.isEmpty || pin.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Please enter both Join ID and PIN")),
-                );
-                return;
-              }
-
-              try {
-                final query = await FirebaseFirestore.instance
-                    .collection('households')
-                    .where('joinId', isEqualTo: joinId)
-                    .limit(1)
-                    .get();
-
-                if (query.docs.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("No household found")),
-                  );
-                  return;
-                }
-
-                final doc = query.docs.first;
-                final data = doc.data();
-
-                if (data['pin'] != pin) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Incorrect PIN")),
-                  );
-                  return;
-                }
-
-                final uid = FirebaseAuth.instance.currentUser!.uid;
-
-                await doc.reference.update({
-                  'members': FieldValue.arrayUnion([uid])
-                });
-
-                await FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(uid)
-                    .update({'currentHousehold': doc.id});
-
-                setState(() => _householdId = doc.id);
-                Navigator.pop(context);
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("Error: $e")),
-                );
-              }
-            },
-            child: const Text("Join"),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -1034,7 +1166,7 @@ class _DashboardState extends State<_Dashboard> {
                       'category': category,
                       'location': _expenseLocationController.text.trim(),
                       'description': _expenseDescriptionController.text.trim(),
-                      'userId': FirebaseAuth.instance.currentUser!.uid,
+                      'userId': FirebaseAuth.instance.currentUser?.uid ?? '',
                       'timestamp': Timestamp.fromDate(
                         DateFormat('yyyy-MM-dd').parse(_expenseDateController.text),
                       ),

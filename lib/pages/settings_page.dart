@@ -5,6 +5,7 @@ import '../theme/theme_provider.dart';
 import '../services/auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:share_plus/share_plus.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -120,23 +121,95 @@ class _SettingsPageState extends State<SettingsPage> {
                 ListTile(
                   leading: const Icon(Icons.info_outline_rounded),
                   title: const Text("About EasyBudget AI"),
-                  subtitle: const Text("Version 0.1"),
+                  subtitle: const Text("Version 1.0"),
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: const Text("About EasyBudget AI"),
+                        content: const Text(
+                          "EasyBudget AI helps you track your expenses and manage households effortlessly.\n\n "
+                          "Version 1.0",
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text("Done"),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.help_outline_rounded),
                   title: const Text("Help & Feedback"),
-                  onTap: () {},
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: const Text("Help & Feedback"),
+                        content: const Text(
+                            "If you encounter issues or have suggestions, please email us at:\n\niparv05@icloud.com"),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text("Done"),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.article_outlined),
                   title: const Text("Legal"),
-                  onTap: () {},
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: const Text("Legal"),
+                        content: const SingleChildScrollView(
+                          child: Text(
+                            "Terms of Service:\n"
+                            "By using this app, you agree to the terms outlined here.\n\n"
+                            "Privacy Policy:\n"
+                            "Your data is stored securely and is only used for app functionality.\n\n"
+                            "EasyBudget AI is not responsible for financial decisions made using the app.",
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text("Close"),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
           ),
+
+          const SizedBox(height: 16),
+
+          RoundedCard(
+            child: ListTile(
+              leading: const Icon(Icons.share_outlined),
+              title: const Text("Share EasyBudget AI"),
+              subtitle: const Text("Tell your friends about the app"),
+              onTap: () {
+                Share.share(
+                  "Check out EasyBudget AI for managing your expenses: https://github.com/ibrahim-parvez/EasyBudget-AI",
+                  subject: "EasyBudget AI - Expense Tracking App",
+                );
+              },
+            ),
+          ),
+
 
           const SizedBox(height: 16),
 

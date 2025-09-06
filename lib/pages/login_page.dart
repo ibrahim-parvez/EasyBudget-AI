@@ -93,10 +93,34 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
     }
   }
 
-
   Future<void> _appleSignIn() async {
-    // Implement your Apple sign-in logic here
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Apple Sign-In not implemented')));
+    if (!mounted) return;
+    setState(() => _loading = true);
+    try {
+      final cred = await _auth.signInWithApple();
+      if (cred == null) return; // user canceled Apple Sign-In
+
+      // Update displayName if missing
+      final appleUser = _auth.getCurrentUser();
+      if (appleUser != null && (appleUser.displayName == null || appleUser.displayName!.isEmpty)) {
+        final fullName = appleUser.displayName ?? '';
+        if (fullName.isNotEmpty) {
+          await appleUser.updateDisplayName(fullName);
+          await appleUser.reload();
+        }
+      }
+
+      if (!mounted) return;
+      Navigator.of(context).pushReplacementNamed('/home');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Apple sign in failed: $e')),
+      );
+    } finally {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
   }
 
   @override

@@ -30,6 +30,8 @@ class HouseholdProvider extends ChangeNotifier {
   }
 }
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
@@ -54,23 +56,22 @@ class EasyBudgetApp extends StatelessWidget {
     final themeProvider = Provider.of<ThemeProvider>(context);
 
     return MaterialApp(
+      navigatorKey: navigatorKey, // ← add this
       debugShowCheckedModeBanner: false,
       title: 'EasyBudget AI',
       theme: AppThemes.light,
       darkTheme: AppThemes.dark,
       themeMode: themeProvider.mode,
       builder: (context, child) {
-        // Detect actual brightness: either themeMode or system default
         final platformBrightness = MediaQuery.platformBrightnessOf(context);
         final isDark = themeProvider.mode == ThemeMode.dark ||
             (themeProvider.mode == ThemeMode.system &&
                 platformBrightness == Brightness.dark);
 
-        // Set the system UI overlay (status bar icons) dynamically
         SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
-          statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark, // Android
-          statusBarBrightness: isDark ? Brightness.dark : Brightness.light,     // iOS
+          statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+          statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
         ));
 
         return AnnotatedRegion<SystemUiOverlayStyle>(

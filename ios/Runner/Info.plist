@@ -30,6 +30,12 @@
 				<string>com.googleusercontent.apps.249735466547-geta6p3nvaqn83jl79jggu4p2uvtiue7</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.example.easybudgetai</string>
+			</array>
+		</dict>
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
@@ -62,5 +68,7 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
+	<key>NSFaceIDUsageDescription</key>
+	<string>This app uses Face ID to log in with Apple.</string>
 </dict>
 </plist>

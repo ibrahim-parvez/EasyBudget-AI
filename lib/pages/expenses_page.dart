@@ -135,8 +135,9 @@ class _ExpensesPageState extends State<ExpensesPage> {
               TextField(
                 controller: _expenseAmountController,
                 decoration: InputDecoration(
-                    labelText: "Amount (${CurrencyUtils.symbol(_currencyCode)})"),
-                keyboardType: TextInputType.number,
+                  labelText: "Amount (${CurrencyUtils.symbol(_currencyCode)})"
+                ),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
